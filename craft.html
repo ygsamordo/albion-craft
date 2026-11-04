@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Albion Craft — kalkulator materiałów</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#10151e;color:#f3f5fa;font:16px system-ui,Arial}main{max-width:900px;margin:36px auto;padding:0 18px}h1{font-size:30px;margin-bottom:8px;color:#e9bb68}p,.muted{color:#a8b7c9;line-height:1.5}section{background:#1b2533;border:1px solid #34455a;border-radius:16px;padding:24px;margin:18px 0}label{display:block;margin:15px 0 7px;color:#d1d9e5;font-size:14px}input{width:100%;border-radius:10px;border:1px solid #53647b;background:#101924;color:white;font:inherit;padding:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.search-list{max-height:270px;overflow:auto}.item{display:flex;gap:12px;align-items:center;width:100%;text-align:left;background:#121c29;color:white;border:0;border-bottom:1px solid #304153;padding:8px;cursor:pointer}.item:hover{background:#304054}.item img,.mat img{width:50px;height:50px;object-fit:contain}.chosen{display:flex;gap:12px;align-items:center;margin:14px 0}.chosen img{width:64px;height:64px}.mat{display:grid;grid-template-columns:50px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid #354559}.mat strong{color:#f1c97f;font-size:19px}.mat small{display:block;color:#9eafc4;margin-top:4px}.mat .name{overflow-wrap:anywhere}.btn{width:100%;border:0;border-radius:10px;background:#d5a352;color:#19140b;font-weight:750;padding:15px;font-size:17px;cursor:pointer;margin-top:18px}.status{color:#f0c67d}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}.summary>div{background:#101924;padding:14px;border-radius:12px}.summary strong{display:block;font-size:22px;color:#f1c97f}.help{font-size:13px;color:#a9b9cc}.toggle{display:flex;gap:9px;align-items:center}.toggle input{width:auto}.hidden{display:none!important}@media(max-width:600px){.grid,.summary{grid-template-columns:1fr}section{padding:16px}main{margin:20px auto}.mat{grid-template-columns:40px minmax(0,1fr) auto;gap:8px}.mat img{width:40px;height:40px}.mat strong{font-size:16px}}
+ .mat small{font-size:12px}.mat{padding:10px 0}.chosen{background:#111b28;padding:10px;border-radius:12px}h2{font-size:20px;margin:0 0 12px}.status{font-size:13px}.btn{margin-top:12px}section{margin:14px 0}</style><style>.mode-nav{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 22px}.mode-nav a{flex:1;min-width:180px;text-align:center;padding:13px 14px;border:1px solid #5c6471;border-radius:11px;text-decoration:none;color:#f3f5fa;background:#1b2533;font-weight:700}.mode-nav a.active{background:#d5a352;color:#19140b;border-color:#d5a352}</style></head><body><main>
+<h1>⚒ Albion Craft</h1><nav class="mode-nav" aria-label="Tryb kalkulatora"><a href="./index.html" class="active">⚒ Materiały</a><a href="./market.html" class="">📈 Opłacalność i sprzedaż</a></nav>
+<section><label for="search">Przedmiot</label><input id="search" placeholder="np. Demonfang 4.2" autocomplete="off"><div id="results" class="search-list"></div>
+<div id="selected" class="chosen hidden"><img id="itemImage" alt=""><div><b id="itemLabel"></b><div class="muted" id="itemId"></div></div></div>
+<div class="grid"><div><label for="quantity">Ilość</label><input id="quantity" type="number" min="1" step="1" value="100"></div><div><label for="rrr">Zwrot materiałów (%)</label><input id="rrr" type="number" min="0" max="99" step="0.1" value="36.7"></div></div>
+<label class="toggle"><input type="checkbox" id="premium" checked> Premium</label>
+<button id="calculate" class="btn">Oblicz</button><p id="status" class="status">Ładowanie receptur…</p></section>
+<section><h2>Materiały</h2><p id="summary" class="muted">Wybierz przedmiot.</p><div id="totals" class="summary hidden"></div><div id="materials"></div><p class="help">Wyniki uwzględniają podany zwrot. To szacunkowe zużycie, nie gwarantowana ilość zakupów.</p></section>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id);
+const namesURL='https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/formatted/items.json';
+const recipesURL='https://raw.githubusercontent.com/ao-data/ao-bin-dumps/master/items.json';
+const imageBase='https://render.albiononline.com/v1/item/';
+let names=[],recipes=new Map(),chosen=null;
+const arr=x=>!x?[]:Array.isArray(x)?x:[x];
+const idOf=x=>x?.UniqueName||x?.uniqueName||x?.['@uniquename']||x?.id||'';
+const nameOf=x=>x?.LocalizedNames?.['EN-US']||x?.LocalizedNames?.['en-US']||x?.name||idOf(x);
+const tier=id=>Number(id.match(/^T(\d+)_/)?.[1]||0);
+const enchant=id=>Number(id.match(/@(\d+)$/)?.[1]||0);
+const norm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+const showName=x=>x.name.replace(/^(Beginner's|Novice's|Journeyman's|Adept's|Expert's|Master's|Grandmaster's|Elder's)\s+/i,'')+' '+tier(x.id)+'.'+enchant(x.id);
+const fmt=n=>Math.ceil(n).toLocaleString('pl-PL');
+const icon=id=>imageBase+encodeURIComponent(id)+'.png?quality=1&size=96';
+function setIcon(el,id){el.onerror=()=>{el.onerror=null;el.style.opacity='.2'};el.style.opacity='1';el.src=icon(id)}
+function parseRecipe(r){
+ const candidates=[];
+ function walk(x,depth=0){if(!x||depth>7)return;if(Array.isArray(x)){for(const y of x)walk(y,depth+1);return}if(typeof x!=="object")return;
+ const resources=arr(x.craftresource||x.CraftResource||x.resources||x.resource);
+ if(resources.length){const parsed=resources.map(m=>{let id=m?.['@uniquename']||m?.uniquename||m?.UniqueName||m?.id||'';const lv=Number(m?.['@enchantmentlevel']||0);if(lv&&!id.includes('@'))id+='@'+lv;return{id,qty:Number(m?.['@count']??m?.count??m?.Count??0),returnable:String(m?.['@maxreturnamount']??'1')!=='0'}});if(parsed.length&&parsed.every(m=>m.id&&m.qty>0))candidates.push(parsed)}
+ for(const [k,v] of Object.entries(x))if(k!=='craftresource'&&k!=='CraftResource'&&k!=='resources'&&k!=='resource')walk(v,depth+1);
+ }walk(r);return candidates[0]||null;
+}
+function addRecipes(raw){
+ let count=0;const visit=(node,depth=0)=>{if(!node||depth>9)return;if(Array.isArray(node)){for(const x of node)visit(x,depth+1);return}if(typeof node!=='object')return;
+ const id=idOf(node);if(id&&/^T[1-8]_/.test(id)){
+ const base=parseRecipe(node.craftingrequirements||node.CraftingRequirements||node.craftingRequirements);
+ if(base){recipes.set(id,base);count++}
+ for(const e of arr(node.enchantments?.enchantment||node.enchantments?.Enchantment)){
+ const lv=Number(e?.['@enchantmentlevel']??e?.enchantmentlevel??e?.level);const mats=parseRecipe(e?.craftingrequirements||e?.CraftingRequirements);
+ if(lv&&mats){recipes.set(id+'@'+lv,mats);count++}}
+ }
+ if(depth<9)for(const [k,v] of Object.entries(node))if(k!=='craftingrequirements'&&k!=='CraftingRequirements'&&k!=='craftingRequirements')visit(v,depth+1);
+ };visit(raw);return count;
+}
+
+async function getJSON(url){const r=await fetch(url);if(!r.ok)throw Error('HTTP '+r.status);return r.json()}
+async function load(){try{const [a,b]=await Promise.all([getJSON(namesURL),getJSON(recipesURL)]);addRecipes(b);const raw=Array.isArray(a)?a:a.items||[];names=raw.map(x=>({id:idOf(x),name:nameOf(x)})).filter(x=>x.id&&tier(x.id)>=4);$('status').textContent='Gotowe — wybierz przedmiot. Receptury: '+recipes.size.toLocaleString('pl-PL')+'.';if($('search').value.trim())search()}catch(e){$('status').textContent='Nie udało się pobrać katalogu: '+e.message+'. Odśwież stronę.'}}
+function search(){const raw=$('search').value.trim(),out=$('results');out.replaceChildren();if(raw.length<2)return;const match=raw.match(/(?:^|\s)([1-8])\.([0-4])\s*$/),t=match?Number(match[1]):null,e=match?Number(match[2]):null,q=norm(match?raw.slice(0,match.index):raw);if(!q)return;const candidates=names.filter(x=>(t===null||tier(x.id)===t)&&(norm(x.name).includes(q)||norm(x.id).includes(q)));const found=[];const seen=new Set();for(const x of candidates){const id=e!==null&&e>0?x.id.replace(/@\d+$/,'')+'@'+e:x.id;if(e===0&&enchant(x.id)!==0)continue;if(!recipes.has(id)||seen.has(id))continue;seen.add(id);found.push({...x,id});}found.sort((a,b)=>Number(norm(b.name).startsWith(q))-Number(norm(a.name).startsWith(q)));for(const x of found.slice(0,35)){const btn=document.createElement('button');btn.className='item';const im=document.createElement('img');setIcon(im,x.id);im.loading='lazy';const label=document.createElement('span');label.textContent=showName(x);btn.append(im,label);btn.onclick=()=>{chosen=x;$('search').value=showName(x);out.replaceChildren();$('selected').classList.remove('hidden');$('itemLabel').textContent=showName(x);$('itemId').textContent=x.id;setIcon($('itemImage'),x.id);calculate()};out.append(btn)}if(!found.length)out.textContent='Brak receptury dla tego przedmiotu. Spróbuj innej nazwy.'}
+function calculate(){if(!chosen){$('status').textContent='Wybierz przedmiot z listy.';return}const recipe=recipes.get(chosen.id);if(!recipe){$('status').textContent='Brak receptury dla '+chosen.id;return}const quantity=Math.max(1,Math.floor(Number($('quantity').value)||1));const rrr=Math.min(99,Math.max(0,Number($('rrr').value)||0))/100;const out=$('materials');out.replaceChildren();let grossTotal=0,netTotal=0;for(const m of recipe){const gross=m.qty*quantity,net=m.returnable?Math.max(m.qty,Math.ceil(gross*(1-rrr))):gross;grossTotal+=gross;netTotal+=net;const row=document.createElement('div');row.className='mat';const im=document.createElement('img');setIcon(im,m.id);const desc=document.createElement('div');desc.className='name';const title=document.createElement('b');title.textContent=names.find(x=>x.id===m.id)?.name||m.id;const small=document.createElement('small');small.textContent='Bez zwrotu: '+fmt(gross)+' · Pierwszy craft: '+fmt(m.qty);desc.append(title,small);const count=document.createElement('strong');count.textContent=fmt(net)+' szt.';row.append(im,desc,count);out.append(row)}$('summary').textContent=showName(chosen)+' · '+quantity+' szt. · '+(rrr*100).toFixed(1)+'% zwrotu';$('totals').classList.add('hidden');$('totals').replaceChildren();$('status').textContent='Gotowe'}
+$('search').addEventListener('input',search);$('calculate').addEventListener('click',calculate);$('quantity').addEventListener('input',()=>{if(chosen)calculate()});$('rrr').addEventListener('input',()=>{if(chosen)calculate()});load();
+</script></body></html>
